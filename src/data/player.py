@@ -123,18 +123,23 @@ class PlayerState:
                 f"({len(self.buildings)} types)")
 
 
-def parse_player_state(stats_path: Path, json_repo_path: Path) -> PlayerState:
-    """Parse my_stats.txt content into PlayerState.
+def parse_player_state_from_text(raw: str, json_repo_path: Path) -> PlayerState:
+    """Parse my_stats.txt content (as a string) into PlayerState.
 
-    The Supercell stats file is JSON wrapped in some preamble (TSV-style `1\\t{...}`).
-    We try to find the first '{' and parse from there.
+    The Supercell payload is JSON, sometimes preceded by a TSV-style row number
+    like `1\\t{...}`. We locate the first '{' and parse from there.
     """
-    raw = stats_path.read_text(encoding="utf-8", errors="replace").strip()
+    raw = raw.strip()
     if not raw.startswith("{"):
         idx = raw.find("{")
         if idx >= 0:
             raw = raw[idx:]
-    data = json.loads(raw)
+    if not raw:
+        raise ValueError("Empty player data — paste or upload your in-game share.")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Couldn't parse as JSON: {e}") from e
 
     lookups = _load_name_lookups(json_repo_path)
     state = PlayerState()
@@ -241,13 +246,18 @@ def parse_player_state(stats_path: Path, json_repo_path: Path) -> PlayerState:
             state.equipment[name] = entry["lvl"]
 
     # --- TH level inference ---
-    # Best signals: (1) explicit Town Hall building if it's in our ID map; (2) hero level cap.
     if "Town Hall" in state.buildings and state.buildings["Town Hall"]:
         state.th_level = max(state.buildings["Town Hall"])
     else:
         state.th_level = _infer_th_from_heroes(state.heroes)
 
     return state
+
+
+def parse_player_state(stats_path: Path, json_repo_path: Path) -> PlayerState:
+    """Parse my_stats.txt from a file path."""
+    raw = stats_path.read_text(encoding="utf-8", errors="replace")
+    return parse_player_state_from_text(raw, json_repo_path)
 
 
 # --- TH inference from heroes ---

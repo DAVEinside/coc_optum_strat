@@ -19,10 +19,10 @@ import streamlit as st
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-from src.data.player import parse_player_state, PlayerState
+from src.data.player import parse_player_state_from_text, PlayerState
 from src.data.player_loader import jobs_from_player_state
 from src.data.loaders import add_town_hall_gate
-from src.data.schema import Track, Category
+from src.data.schema import Track
 from src.optim.lpt import lpt_schedule
 from src.optim.cpsat import cpsat_schedule
 from src.optim.resources import ResourceBudget
@@ -31,9 +31,9 @@ from src.optim.strength import upgrade_weight
 from src.viz.schedule_list import to_dataframe, to_markdown
 
 
-SAMPLE_STATS_PATH = ROOT / "notebooks" / "my_stats.txt"
-JSON_PATH = ROOT / "data_repo" / "clash-of-clans-data" / "output" / "troopUpgradeStats.json"
-XLSX_PATH = ROOT / "data_repo" / "structs_data.xlsx"
+SAMPLE_STATS_PATH = ROOT / "sample_player.txt"
+JSON_PATH = ROOT / "data" / "troops.json"
+XLSX_PATH = ROOT / "data" / "buildings.xlsx"
 
 
 st.set_page_config(page_title="CoC Upgrade Optimizer", layout="wide")
@@ -48,18 +48,35 @@ st.caption(
 # ---------- Sidebar inputs ----------
 with st.sidebar:
     st.header("1. Player state")
-    uploaded = st.file_uploader("Upload `my_stats.txt`", type=["txt", "json"])
-    if uploaded is not None:
-        stats_bytes = uploaded.getvalue()
-    else:
-        st.caption("Using bundled sample player.")
-        stats_bytes = SAMPLE_STATS_PATH.read_bytes()
+    st.caption(
+        "In Clash of Clans → Settings → More Settings → Copy ID, then paste your full "
+        "player data below. Or upload a saved `.txt`."
+    )
+    input_mode = st.radio("Input method", ["Paste", "Upload file", "Use sample"], horizontal=True,
+                          label_visibility="collapsed")
 
-    tmp_stats = ROOT / ".tmp_stats.txt"
-    tmp_stats.write_bytes(stats_bytes)
+    raw_text = ""
+    if input_mode == "Paste":
+        raw_text = st.text_area(
+            "Paste player JSON",
+            height=180,
+            placeholder='{"tag":"#XXX","timestamp":...,"heroes":[...],"units":[...],...}',
+            help="The full JSON your in-game share copies to clipboard.",
+        )
+    elif input_mode == "Upload file":
+        uploaded = st.file_uploader("Choose file", type=["txt", "json"], label_visibility="collapsed")
+        if uploaded is not None:
+            raw_text = uploaded.getvalue().decode("utf-8", errors="replace")
+    else:
+        raw_text = SAMPLE_STATS_PATH.read_text(encoding="utf-8", errors="replace")
+        st.caption("Loaded bundled sample (rushed TH17/18 player).")
+
+    if not raw_text.strip():
+        st.info("Paste your player data above, upload a file, or pick the sample to continue.")
+        st.stop()
 
     try:
-        state: PlayerState = parse_player_state(tmp_stats, JSON_PATH)
+        state: PlayerState = parse_player_state_from_text(raw_text, JSON_PATH)
     except Exception as e:
         st.error(f"Couldn't parse player data: {e}")
         st.stop()

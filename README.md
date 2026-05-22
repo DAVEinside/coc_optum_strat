@@ -1,179 +1,93 @@
-# Clash of Clans — Upgrade Schedule Optimizer
+# Clash of Clans — Upgrade Optimizer
 
-Mathematically optimize the order of upgrades during a Town Hall transition, minimizing time across `m` builders. Uses Google OR-Tools CP-SAT, with an LPT greedy baseline for comparison.
+A Streamlit web app that takes your Clash of Clans player state and produces an ordered upgrade plan that **prioritizes high-value progress first** — heroes, key defenses, and troops before storages and resource buildings — while respecting builder/Lab/Pet House parallelism.
 
-**Primary deliverables:**
-- [app.py](app.py) — Streamlit web UI: upload `my_stats.txt`, pick target TH + builders, get a plan
-- [notebooks/th15_to_th16.ipynb](notebooks/th15_to_th16.ipynb) — deep dive on one TH transition with all 3 presets
-- [notebooks/all_ths.ipynb](notebooks/all_ths.ipynb) — sweep across TH8→TH18, 4 builder counts, 3 presets
-- [notebooks/player_demo.ipynb](notebooks/player_demo.ipynb) — reads a real player dump, infers state, plans to target TH
+Built on Google OR-Tools CP-SAT with a weighted-completion-time objective.
 
-## Run the web app
+## Live use
+
+1. **In Clash of Clans** → Settings → More Settings → press *Copy ID* / share-player-data.
+2. **Open the app** (locally `streamlit run app.py`, or your deployed instance).
+3. Paste your data into the sidebar, pick a target Town Hall, and click **Compute upgrade plan**.
+
+The app shows:
+- **Time to maxed Town Hall** and bottleneck track
+- **Ordered "do these first" list** with a slider to show 10 → all upgrades
+- **Per-machine tabs**: Laboratory, Pet House, Builder 1-6 separately
+- **Markdown / CSV download** of the full plan
+
+## How it works
+
+The optimizer schedules every upgrade between your current state and target-TH max across three independent tracks:
+
+- **Builders** (1-6, you choose): buildings, defenses, traps, heroes
+- **Laboratory** (single researcher): troops + spells
+- **Pet House** (single trainer): pets
+
+Each upgrade has a strength weight. Heroes and key defenses score highest, storages and resource buildings lowest. The solver minimizes `Σ weight × completion_time` — meaning high-value upgrades land early in the schedule even though everything eventually maxes.
+
+Walls are excluded (they upgrade instantly and are usually handled manually).
+
+## Local run
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Then open http://localhost:8501. Upload your `my_stats.txt` (or use the bundled sample), pick a target Town Hall, builder count, and optionally income/hours-per-day. The app shows: makespan, Gantt chart, per-builder upgrade list, and a Markdown/CSV export of the plan.
+Then open http://localhost:8501.
 
-## Problem
+## Deploy
 
-`Pm | prec | Cmax` — parallel-machine scheduling with precedence constraints. Three independent machines:
+This is a pure Python + Streamlit project. To deploy on **Streamlit Community Cloud**:
 
-- **Builders** (`m ∈ {1..6}`): buildings, defenses, traps, heroes
-- **Laboratory** (1 single machine): troops + spells
-- **Pet House** (1 single machine): pets
-- **Walls** (free track, instant build, no machine hold)
+1. Push to a public GitHub repo (the `data/` and `sample_player.txt` files are required at runtime — don't `.gitignore` them).
+2. Connect the repo at https://share.streamlit.io and pick `app.py` as the entry point.
+3. Streamlit auto-installs from `requirements.txt`.
 
-Precedence: per-entity level chains plus a TH gate (everything at TH-N tier requires TH itself to be at level N).
-
-## Findings
-
-### 1. Lab is the bottleneck
-
-For the `max` preset on most transitions, the schedule is gated by the Laboratory (single machine), not by builders. With 6 builders on TH15→TH16 you reach **337 days** for both LPT and CP-SAT — the same number — because the lab decides.
-
-Marginal value of additional builders for the **max** preset (days saved):
-
-| Transition | m=1→2 | m=2→3 | m=3→6 |
-|---|---:|---:|---:|
-| TH8→TH9   | 59 | 20 | 5  |
-| TH10→TH11 | 124 | 37 | **0** |
-| TH13→TH14 | 262 | 82 | **0** |
-| TH15→TH16 | 379 | 42 | **0** |
-| TH17→TH18 | 634 | **0** | **0** |
-
-The 6th builder (OTTO from Builder Base) is **worthless** for maxing at high TH. Boost the lab with Books of Research / Research Potions instead.
-
-### 2. Selection matters more than builder count
-
-Picking what NOT to upgrade saves more time than adding builders:
-
-| TH transition | max preset (m=6) | balanced (m=6) | rush (m=6) |
-|---|---:|---:|---:|
-| TH10→TH11 | 87.5 d | 36.8 d | 30.0 d |
-| TH13→TH14 | 179.5 d | 79.8 d | 47.0 d |
-| TH15→TH16 | 337.0 d | 120.5 d | 72.5 d |
-| TH17→TH18 | 721.2 d | 252.5 d | 107.0 d |
-
-Going from "max everything" to "balanced" (heroes maxed, key meta troops, 50% walls) roughly **halves the time**. Rushing further cuts another ~30%.
-
-### 3. CP-SAT vs LPT — gap depends on bottleneck
-
-| Preset | Bottleneck (m=6) | LPT vs CP-SAT gap |
-|---|---|---:|
-| max | Lab | 0% |
-| balanced | Builders | ~25% |
-| rush | Builders | ~30% |
-
-When you're builder-bound, the scheduling math really matters. When you're lab-bound, any ordering of the builder track gives the same total time because the lab decides.
-
-### 4. Cumulative path TH8 → TH18 maxed (6 builders, CP-SAT)
-
-Rough totals from the all-TH notebook:
-
-| Preset | Cumulative days TH8→TH18 |
-|---|---:|
-| max | ~2400 d (~6.5 years) |
-| balanced | ~960 d (~2.6 years) |
-| rush | ~560 d (~1.5 years) |
+That's it. The app has no secrets, no external services, no database.
 
 ## Project structure
 
 ```
-app.py                    # Streamlit web app
-notebooks/
-  th15_to_th16.ipynb      # one-transition deep dive
-  all_ths.ipynb           # TH8 -> TH18 sweep with all presets
-  player_demo.ipynb       # plan from a real player's my_stats.txt
-  my_stats.txt            # sample Supercell player data
+app.py                       # Streamlit entry point
+sample_player.txt            # Sample Supercell player payload (TH17/18 rushed)
+data/
+  troops.json                # Wiki-sourced troop/hero/spell/pet upgrade tables
+  buildings.xlsx             # Wiki-sourced building/trap/wall upgrade tables
 src/
   data/
-    schema.py             # pydantic UpgradeJob
-    xlsx_parser.py        # parse structs_data.xlsx into per-level rows
-    loaders.py            # JSON + xlsx -> UpgradeJob list
-    player.py             # parse Supercell my_stats.txt -> PlayerState
-    player_loader.py      # UpgradeJobs from PlayerState to target TH
+    schema.py                # pydantic UpgradeJob model
+    player.py                # parse Supercell payload → PlayerState
+    player_loader.py         # PlayerState + target TH → list[UpgradeJob]
+    xlsx_parser.py           # parse buildings.xlsx
+    loaders.py               # TH-gate precedence helper
   optim/
-    cpsat.py              # OR-Tools CP-SAT solver (LPT warm-start, resource-aware)
-    lpt.py                # LPT greedy baseline
-    selector.py           # YAML profile -> filtered job set
-    resources.py          # Income-rate constraints + default rates per TH
-    verify.py             # post-solve assertions
+    cpsat.py                 # OR-Tools CP-SAT solver (weighted-CT objective + LPT fallback)
+    lpt.py                   # Greedy priority-list scheduler (used as fallback / warm-start)
+    resources.py             # Optional income-rate constraint
+    strength.py              # Strength weights per upgrade
+    verify.py                # Post-solve precedence + no-overlap asserts
   viz/
-    gantt.py              # Plotly Gantt + bar charts
-    schedule_list.py      # human-readable "do X then Y" output
-config/
-  selection_max.yaml      # upgrade everything
-  selection_balanced.yaml # heroes max, selected troops, 50% walls
-  selection_rush.yaml     # heroes + critical defenses only
-data_repo/
-  clash-of-clans-data/    # existing JSON parser (troops/heroes/spells/pets)
-  structs_data.xlsx       # wiki-sourced building upgrade data
-  manual/                 # legacy hand-curated CSV (no longer used)
+    schedule_list.py         # DataFrame + Markdown views of a Schedule
 requirements.txt
 ```
 
-## Setup
+## Caveats
 
-```bash
-pip install -r requirements.txt
-```
+- **Building ID mapping** for the Supercell payload is best-effort. Hero/troop/spell/pet levels parse reliably from in-game IDs; building names use a community-derived table that may not match Supercell's internal IDs 1:1. The default behavior assumes "all buildings at current-TH max" rather than reading individual building levels.
+- **Storage caps** are not enforced. Income (optional) acts as a flow constraint only.
+- **Town Hall inference** uses your max hero level. If wrong, override it in the sidebar.
+- **Hero equipment** and **Builder Base** are out of scope.
 
-Open either notebook in Jupyter. Both are already executed with results visible.
+## Tech
 
-To re-run:
-```bash
-python -m nbconvert --to notebook --execute notebooks/th15_to_th16.ipynb \
-  --output th15_to_th16.ipynb --ExecutePreprocessor.timeout=600
-python -m nbconvert --to notebook --execute notebooks/all_ths.ipynb \
-  --output all_ths.ipynb --ExecutePreprocessor.timeout=1200
-```
+- [Streamlit](https://streamlit.io) — web UI
+- [Google OR-Tools CP-SAT](https://developers.google.com/optimization/cp/cp_solver) — constraint scheduler
+- [pydantic](https://docs.pydantic.dev) — typed job records
+- [pandas](https://pandas.pydata.org) — data manipulation
+- [openpyxl](https://openpyxl.readthedocs.io) — building data spreadsheet
 
-## Data sources
+## License
 
-- **Buildings**: [`data_repo/structs_data.xlsx`](data_repo/structs_data.xlsx) — wiki-sourced upgrade tables for all 50 home-village structures. Parser at [`src/data/xlsx_parser.py`](src/data/xlsx_parser.py) reads cost, time, TH-required per level, plus a hardcoded per-TH instance-count table.
-- **Troops/heroes/spells/pets**: existing JSON repo at `data_repo/clash-of-clans-data/`. Per-level cost/time arrays + TH-level gates.
-- **Player initial state** (planned): Supercell's player API — see [`notebooks/my_stats.txt`](notebooks/my_stats.txt) for an example response.
-
-## Selection profiles
-
-Edit [`config/selection_*.yaml`](config/) to change which entities are targets. Each profile has the same fields (heroes, defenses, troops, spells, pets, walls, town_hall) with per-bucket rules (all_max / none / whitelist).
-
-## Roadmap
-
-- [x] TH15→TH16 deep dive with CP-SAT + LPT, all 3 presets
-- [x] Wiki data integration via xlsx; all-TH sweep
-- [x] Player import — parse `my_stats.txt` to set initial entity levels
-- [x] Income-rate resource model (optional): hourly income + hours/day → flow constraint
-- [x] Streamlit web app
-- [ ] Future (if useful): hero equipment, Builder Base, league/event resources
-
-### Income model (when enabled)
-
-[`src/optim/resources.py`](src/optim/resources.py) — flow-only model:
-- User inputs gold+elixir per active hour (default 4M/h) and hours played per day (default 6).
-- Effective rate = active_rate × hours / 24.
-- Constraint: cumulative consumption by time t ≤ initial stockpile + effective_rate × t (per resource, OR-Tools reservoir).
-- Storage caps not enforced — they cause infeasibility cycles when income > cap, and don't change the headline answer for multi-year plans (where the Lab dominates anyway).
-- Smart pruning: if a resource has > 30% headroom over the LPT bound, the constraint is skipped.
-
-## Verification
-
-Every schedule is checked by [`src/optim/verify.py`](src/optim/verify.py):
-
-1. Every job scheduled exactly once
-2. Each `end − start == duration`
-3. Precedence: `end(parent) ≤ start(child)` for every edge
-4. No builder runs two jobs simultaneously
-5. Lab and Pet House never overlap (single machines)
-6. Sweep-line: at most `m` builder jobs active at any instant
-7. Makespan ≥ lower bound (max of per-track work / capacity)
-
-## Limitations
-
-- Unlimited resources assumption (Phase 3 will address)
-- Building instance counts are hardcoded by TH level (in [`src/data/xlsx_parser.py`](src/data/xlsx_parser.py) — see `INSTANCE_COUNT` dict). Update if Supercell changes layouts.
-- Hero equipment (Blacksmith) and Builder Base are out of scope
-- Selection profiles encode personal judgment; future v2 could optimize selection given an army-strength utility function
+This is a hobbyist tool. Clash of Clans is a trademark of Supercell — this project is not affiliated with or endorsed by Supercell.
