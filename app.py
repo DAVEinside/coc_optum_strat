@@ -19,7 +19,22 @@ import streamlit as st
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-from src.data.player import parse_player_state_from_text, PlayerState
+from src.data.player import PlayerState
+try:
+    from src.data.player import parse_player_state_from_text
+except ImportError:
+    # Back-compat shim: an older player.py only exposes the path-based parser.
+    import tempfile, os
+    from src.data.player import parse_player_state as _parse_from_path
+
+    def parse_player_state_from_text(raw: str, json_repo_path: Path) -> PlayerState:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write(raw)
+            tmp = f.name
+        try:
+            return _parse_from_path(Path(tmp), json_repo_path)
+        finally:
+            os.unlink(tmp)
 from src.data.player_loader import jobs_from_player_state
 from src.data.loaders import add_town_hall_gate
 from src.data.schema import Track
