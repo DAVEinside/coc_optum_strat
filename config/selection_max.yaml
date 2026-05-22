@@ -1,0 +1,20 @@
+# Max-everything: upgrade every entity to its TH16-max level.
+# This is the classical "max base before moving" baseline.
+starting_th: 15
+target_th: 16
+builders: 6
+
+heroes: all_max
+defenses: all_max
+storages: all_max
+army_buildings: all_max
+resource_buildings: all_max
+troops:
+  mode: all_max
+spells:
+  mode: all_max
+pets:
+  mode: all_max
+walls:
+  pct_to_next_level: 1.0
+town_hall: include

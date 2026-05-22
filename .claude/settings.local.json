@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(ls \"C:/Users/DELL/.claude/plans/\" 2>&1 | head -5)",
+      "Read(//c/Users/DELL/.claude/plans/**)"
+    ]
+  }
+}

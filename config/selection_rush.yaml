@@ -1,0 +1,49 @@
+# Rush: minimum viable TH16 — TH itself + heroes + critical defenses only.
+# Models the "rush meta" approach — get to next TH as fast as possible.
+starting_th: 15
+target_th: 16
+builders: 6
+
+heroes: all_max  # heroes still matter — they shouldn't lag
+
+defenses:
+  - Eagle Artillery
+  - Scattershot
+  - Inferno Tower
+  - Monolith
+  - Spell Tower
+  - X-Bow
+
+storages: all_max
+
+army_buildings:
+  - Laboratory
+  - Clan Castle
+
+resource_buildings: none
+
+troops:
+  mode: whitelist
+  whitelist:
+    - Root Rider
+    - Electro Titan
+    - Healer
+    - Hog Rider
+
+spells:
+  mode: whitelist
+  whitelist:
+    - Rage Spell
+    - Freeze Spell
+    - Recall Spell
+
+pets:
+  mode: whitelist
+  whitelist:
+    - Phoenix
+    - Frosty
+
+walls:
+  pct_to_next_level: 0.0
+
+town_hall: include
